@@ -180,6 +180,14 @@ public sealed class PolicyEngine
     /// path. Internal (in-memory) policy evaluation and the fail-closed resolution are identical to
     /// <see cref="Evaluate"/>.
     /// </summary>
+    /// <remarks>
+    /// Fail-closed resolution only covers a backend that returns a decision with a non-empty
+    /// <see cref="ExternalPolicyDecision.Error"/> (or a deny). It does not wrap exceptions: if a backend
+    /// throws, the exception propagates to the caller rather than being turned into a deny, exactly as in
+    /// <see cref="Evaluate"/>. Cancellation likewise surfaces as an <see cref="OperationCanceledException"/>
+    /// (thrown before each backend call and by cooperating backends) and no <see cref="PolicyDecision"/> is
+    /// produced. Callers own both the throw path and cancellation handling.
+    /// </remarks>
     public async Task<PolicyDecision> EvaluateAsync(
         string agentDid,
         Dictionary<string, object> context,
@@ -199,6 +207,11 @@ public sealed class PolicyEngine
         var externalDecisions = new List<ExternalPolicyDecision>(prep.ExternalBackends.Count);
         foreach (var backend in prep.ExternalBackends)
         {
+            // Inspect the token ourselves before each call: the default EvaluateAsync wraps the sync
+            // Evaluate and ignores the token, so without this a backend would run its full work on an
+            // already-cancelled token and a later backend would still be invoked after an earlier one
+            // completed on a cancelled token.
+            cancellationToken.ThrowIfCancellationRequested();
             externalDecisions.Add(await backend.EvaluateAsync(prep.EvalContext, cancellationToken).ConfigureAwait(false));
         }
 
