@@ -619,6 +619,22 @@ rules:
     }
 
     [Fact]
+    public async Task PolicyEngine_EvaluateAsync_PreCancelledToken_NoBackends_Throws()
+    {
+        // With no external backends the in-memory path would otherwise return a decision; the entry-point
+        // token check must still throw so "no PolicyDecision on cancellation" holds for every path.
+        var engine = new PolicyEngine();
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => engine.EvaluateAsync(
+            "did:agentmesh:test",
+            new Dictionary<string, object> { ["tool_name"] = "anything" },
+            cts.Token));
+    }
+
+    [Fact]
     public async Task PolicyEngine_EvaluateAsync_BackendException_Propagates()
     {
         var engine = new PolicyEngine();

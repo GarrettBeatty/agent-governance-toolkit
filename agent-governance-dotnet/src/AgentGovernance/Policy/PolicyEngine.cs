@@ -185,14 +185,19 @@ public sealed class PolicyEngine
     /// <see cref="ExternalPolicyDecision.Error"/> (or a deny). It does not wrap exceptions: if a backend
     /// throws, the exception propagates to the caller rather than being turned into a deny, exactly as in
     /// <see cref="Evaluate"/>. Cancellation likewise surfaces as an <see cref="OperationCanceledException"/>
-    /// (thrown before each backend call and by cooperating backends) and no <see cref="PolicyDecision"/> is
-    /// produced. Callers own both the throw path and cancellation handling.
+    /// (checked on entry and again before each backend call, and honored by cooperating backends) and no
+    /// <see cref="PolicyDecision"/> is produced — including when no external backends are registered.
+    /// Callers own both the throw path and cancellation handling.
     /// </remarks>
     public async Task<PolicyDecision> EvaluateAsync(
         string agentDid,
         Dictionary<string, object> context,
         CancellationToken cancellationToken = default)
     {
+        // Honor cancellation on entry so an already-cancelled token throws even on the no-backend
+        // in-memory path, keeping "no PolicyDecision is produced on cancellation" true for every path.
+        cancellationToken.ThrowIfCancellationRequested();
+
         var prep = Prepare(agentDid, context);
         if (prep.ExternalBackends.Count == 0)
         {
